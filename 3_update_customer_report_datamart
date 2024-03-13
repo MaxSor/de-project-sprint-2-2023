@@ -185,7 +185,7 @@ dwh_delta_update_result AS ( -- делаем расчёт витрины по н
                                             FROM dwh_delta AS dd
                                                 GROUP BY dd.customer_id, dd.product_type
                                                     ORDER BY count_product DESC) AS T31 ON T2.customer_id = T31.customer_id_for_top_product_type
-                ) AS T4 WHERE T4.rank_craftsman_id = 1 AND T4.rank_count_product = 1 ORDER BY report_period -- условие помогает оставить в выборке первую по популярности категорию тов1аров
+                ) AS T4 WHERE T4.rank_craftsman_id = 1 AND T4.rank_count_product = 1 ORDER BY report_period -- условие помогает оставить в выборке первую по популярности категорию товаров и самого популярного мастера
 ),
 insert_delta AS ( -- выполняем insert новых расчитанных данных для витрины 
     INSERT INTO dwh.customer_report_datamart (

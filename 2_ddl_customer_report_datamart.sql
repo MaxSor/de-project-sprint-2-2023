@@ -12,7 +12,7 @@ CREATE TABLE dwh.customer_report_datamart (
 	avg_price_order numeric(10, 2) NOT NULL,
 	median_time_order_completed numeric(10, 1) NULL,
 	top_product_category varchar NOT NULL,
-	top_craftsman_id varchar NOT NULL,
+	top_craftsman_id int8 NOT NULL,
 	count_order_created int8 NOT NULL,
 	count_order_in_progress int8 NOT NULL,
 	count_order_delivery int8 NOT NULL,

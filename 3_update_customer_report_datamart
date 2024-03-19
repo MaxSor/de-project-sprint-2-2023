@@ -1,5 +1,3 @@
-BEGIN TRANSACTION;
-
 WITH
 dwh_delta AS ( -- определяем, какие данные были изменены в витрине или добавлены в DWH. Формируем дельту изменений
     SELECT     
@@ -58,9 +56,7 @@ dwh_delta_insert_result AS ( -- делаем расчёт витрины по н
             T4.report_period AS report_period -- отчётный период, год и месяц
             FROM (
                 SELECT     -- в этой выборке объединяем две внутренние выборки по расчёту столбцов витрины и применяем оконную функцию для определения самого популярного мастера ручной работы
-                        *,
-                        RANK() OVER(PARTITION BY T2.customer_id ORDER BY count_craftsman_id DESC) AS rank_craftsman_id,
-                        RANK() OVER(PARTITION BY T2.customer_id ORDER BY count_product DESC) AS rank_count_product                   
+                        *             
                         FROM ( 
                             SELECT -- в этой выборке делаем расчёт по большинству столбцов, так как все они требуют одной и той же группировки, кроме столбца с самой популярной категорией товаров у мастера. Для этого столбца сделаем отдельную выборку с другой группировкой и выполним JOIN
                                 T1.customer_id AS customer_id,
@@ -88,19 +84,21 @@ dwh_delta_insert_result AS ( -- делаем расчёт витрины по н
                                     SELECT     -- Эта выборка поможет определить самого популярного мастера ручной работы у клиента. Эта выборка не делается в предыдущем запросе, так как нужна другая группировка. Для данных этой выборки можно применить оконную функцию, которая и покажет самую популярную категорию товаров у мастера
                                             dd.customer_id AS customer_id_for_top_craftsman_id, 
                                             dd.craftsman_id, 
-                                            COUNT(dd.craftsman_id) AS count_craftsman_id
+                                            COUNT(dd.craftsman_id) AS count_craftsman_id,
+                                            ROW_NUMBER() over(partition by customer_id order by count(dd.craftsman_id) desc) as row_number
                                             FROM dwh_delta AS dd
                                                 GROUP BY dd.customer_id, dd.craftsman_id
-                                                    ORDER BY count_craftsman_id DESC) AS T3 ON T2.customer_id = T3.customer_id_for_top_craftsman_id
+                                                    ORDER BY count_craftsman_id DESC) AS T3 ON T2.customer_id = T3.customer_id_for_top_craftsman_id and T3.row_number = 1
                                 INNER JOIN (
                                     SELECT     -- Эта выборка поможет определить самый популярный товар у клиента. Эта выборка не делается в предыдущем запросе, так как нужна другая группировка. Для данных этой выборки можно применить оконную функцию, которая и покажет самую популярную категорию товаров у мастера
                                             dd.customer_id AS customer_id_for_top_product_type, 
                                             dd.product_type, 
-                                            COUNT(dd.product_id) AS count_product
+                                            COUNT(dd.product_type) AS count_product,
+                                            ROW_NUMBER() over(partition by customer_id order by count(dd.product_type) desc) as row_number
                                             FROM dwh_delta AS dd
                                                 GROUP BY dd.customer_id, dd.product_type
-                                                    ORDER BY count_product DESC) AS T31 ON T2.customer_id = T31.customer_id_for_top_product_type
-                ) AS T4 WHERE T4.rank_craftsman_id = 1 AND T4.rank_count_product = 1 ORDER BY report_period -- условие помогает оставить в выборке первую по популярности категорию тов1аров
+                                                    ORDER BY count_product DESC) AS T31 ON T2.customer_id = T31.customer_id_for_top_product_type and T31.row_number = 1
+                ) AS T4 ORDER BY report_period -- условие помогает оставить в выборке первую по популярности категорию тов1аров
 ),
 dwh_delta_update_result AS ( -- делаем расчёт витрины по новым данным. Этой информации по заказчикам в рамках расчётного периода раньше не было, это новые данные. Их можно просто вставить (insert) в витрину без обновления
     SELECT  
@@ -114,7 +112,7 @@ dwh_delta_update_result AS ( -- делаем расчёт витрины по н
             T4.count_order AS count_order, -- количество заказов у заказчика за месяц
             T4.avg_price_order AS avg_price_order, -- средняя стоимость одного заказа у заказчика за месяц
             T4.median_time_order_completed AS median_time_order_completed, -- медианное время в днях от момента создания заказа до его завершения за месяц
-           T4.product_type AS top_product_category, -- самая популярная категория товаров у этого заказчика за месяц
+            T4.product_type AS top_product_category, -- самая популярная категория товаров у этого заказчика за месяц
             T4.craftsman_id AS top_craftsman_id, -- идентификатор самого популярного мастера ручной работы у заказчика
             T4.count_order_created AS count_order_created, -- количество созданных заказов за месяц
             T4.count_order_in_progress AS count_order_in_progress, -- количество заказов в процессе изготовки за месяц
@@ -124,9 +122,7 @@ dwh_delta_update_result AS ( -- делаем расчёт витрины по н
             T4.report_period AS report_period -- отчётный период, год и месяц
             FROM (
                 SELECT     -- в этой выборке объединяем две внутренние выборки по расчёту столбцов витрины и применяем оконную функцию для определения самого популярного мастера ручной работы
-                        *,
-                        RANK() OVER(PARTITION BY T2.customer_id ORDER BY count_craftsman_id DESC) AS rank_craftsman_id,
-                        RANK() OVER(PARTITION BY T2.customer_id ORDER BY count_product DESC) AS rank_count_product                   
+                        *                 
                         FROM ( 
                             SELECT -- в этой выборке делаем расчёт по большинству столбцов, так как все они требуют одной и той же группировки, кроме столбца с самой популярной категорией товаров у мастера. Для этого столбца сделаем отдельную выборку с другой группировкой и выполним JOIN
                                 T1.customer_id AS customer_id,
@@ -173,19 +169,21 @@ dwh_delta_update_result AS ( -- делаем расчёт витрины по н
                                     SELECT     -- Эта выборка поможет определить самого популярного мастера ручной работы у клиента. Эта выборка не делается в предыдущем запросе, так как нужна другая группировка. Для данных этой выборки можно применить оконную функцию, которая и покажет самую популярную категорию товаров у мастера
                                             dd.customer_id AS customer_id_for_top_craftsman_id, 
                                             dd.craftsman_id, 
-                                            COUNT(dd.craftsman_id) AS count_craftsman_id
+                                            COUNT(dd.craftsman_id) AS count_craftsman_id,
+                                            ROW_NUMBER() over(partition by customer_id order by count(dd.craftsman_id) desc) as row_number
                                             FROM dwh_delta AS dd
                                                 GROUP BY dd.customer_id, dd.craftsman_id
-                                                    ORDER BY count_craftsman_id DESC) AS T3 ON T2.customer_id = T3.customer_id_for_top_craftsman_id
+                                                    ORDER BY count_craftsman_id DESC) AS T3 ON T2.customer_id = T3.customer_id_for_top_craftsman_id and T3.row_number = 1
                                 INNER JOIN (
                                     SELECT     -- Эта выборка поможет определить самый популярный товар у клиента. Эта выборка не делается в предыдущем запросе, так как нужна другая группировка. Для данных этой выборки можно применить оконную функцию, которая и покажет самую популярную категорию товаров у мастера
                                             dd.customer_id AS customer_id_for_top_product_type, 
                                             dd.product_type, 
-                                            COUNT(dd.product_id) AS count_product
+                                            COUNT(dd.product_id) AS count_product,
+                                            ROW_NUMBER() over(partition by customer_id order by count(dd.product_type) desc) as row_number
                                             FROM dwh_delta AS dd
                                                 GROUP BY dd.customer_id, dd.product_type
-                                                    ORDER BY count_product DESC) AS T31 ON T2.customer_id = T31.customer_id_for_top_product_type
-                ) AS T4 WHERE T4.rank_craftsman_id = 1 AND T4.rank_count_product = 1 ORDER BY report_period -- условие помогает оставить в выборке первую по популярности категорию товаров и самого популярного мастера
+                                                    ORDER BY count_product DESC) AS T31 ON T2.customer_id = T31.customer_id_for_top_product_type and T31.row_number = 1
+                ) AS T4 ORDER BY report_period -- условие помогает оставить в выборке первую по популярности категорию товаров и самого популярного мастера
 ),
 insert_delta AS ( -- выполняем insert новых расчитанных данных для витрины 
     INSERT INTO dwh.customer_report_datamart (
@@ -280,4 +278,3 @@ insert_load_date AS ( -- делаем запись в таблицу загру�
         FROM dwh_delta
 )
 SELECT 'increment datamart'; -- инициализируем запрос CTE
-ROLLBACK TRANSACTION;
